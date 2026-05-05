@@ -43,9 +43,11 @@ pip install "touch-grass-mcp[pulse,nlp]"
 # 1. Bootstrap your profile
 touch-grass init
 
-# 2. (optional) Add API keys for richer results
-cp .env.example ~/.config/touch-grass/.env
-# edit and fill in: TICKETMASTER_API_KEY, EVENTBRITE_API_KEY, YELP_API_KEY, etc.
+# 2. (optional) Add API keys for richer results — guided wizard
+touch-grass setup
+# Walks you through Ticketmaster, Eventbrite, Yelp, NYC Open Data:
+# opens each signup page, validates the key you paste, writes it to .env.
+# Skip any provider you don't want.
 
 # 3. Sanity check
 touch-grass doctor

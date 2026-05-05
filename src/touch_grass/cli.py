@@ -134,6 +134,13 @@ def cmd_clean(args) -> int:
     return 0
 
 
+def cmd_setup(args) -> int:
+    """Guided API key setup: opens signup URLs, validates keys, writes to .env."""
+    from touch_grass.setup_wizard import run_setup
+
+    return run_setup()
+
+
 def cmd_doctor(args) -> int:
     """Sanity check: config exists, env vars set, paths writable."""
     print(f"touch-grass-mcp {__version__}\n")
@@ -176,6 +183,9 @@ def main() -> int:
     p_clean = sub.add_parser("clean", help="purge old cache files")
     p_clean.add_argument("--days", type=int, default=30, help="age threshold in days")
     p_clean.set_defaults(func=cmd_clean)
+
+    p_setup = sub.add_parser("setup", help="guided API key configuration wizard")
+    p_setup.set_defaults(func=cmd_setup)
 
     p_doctor = sub.add_parser("doctor", help="sanity check config + env")
     p_doctor.set_defaults(func=cmd_doctor)
