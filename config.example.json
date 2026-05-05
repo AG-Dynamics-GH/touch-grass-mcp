@@ -1,0 +1,50 @@
+{
+  "_comment": "Touch Grass MCP user profile. Copy to ~/.config/touch-grass/config.json and customize.",
+  "_docs": "See CONFIG.md for the full schema with examples for every field.",
+  "location": {
+    "city": "",
+    "state": "",
+    "zip": "",
+    "radius_miles": 25
+  },
+  "user_profile": {
+    "name": "",
+    "interests": {
+      "music_genres": [],
+      "activities": [],
+      "food_and_drink": [],
+      "topics": []
+    },
+    "dislikes": {
+      "music_genres": [],
+      "activities": [],
+      "food_and_drink": []
+    },
+    "vibe_preferences": [],
+    "neighborhoods": {
+      "favorites": [],
+      "avoid": []
+    },
+    "schedule": {
+      "preferred_days": ["friday", "saturday", "sunday"],
+      "preferred_times": ["evening"],
+      "budget": "no_limit",
+      "avoid_early_morning": true
+    },
+    "social_context": {
+      "typical_group_size": 2,
+      "open_to_solo": true,
+      "open_to_group_events": true
+    },
+    "bucket_list": [],
+    "preferred_groups": [],
+    "avoid_groups": []
+  },
+  "pulse": {
+    "enabled": true,
+    "reddit_subs": [],
+    "rss_feeds": [],
+    "trends_geo": null
+  },
+  "community_calendars": []
+}

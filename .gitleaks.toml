@@ -1,0 +1,16 @@
+# touch-grass-mcp gitleaks config
+# Inherits gitleaks default rules and adds an allowlist for known-public values.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public Algolia search-only keys extracted from museum frontends"
+paths = [
+  '''src/touch_grass/clients/nyc/museums/carnegie_hall\.py''',
+]
+regexes = [
+  # Carnegie Hall's public Algolia search key — they publish it themselves on carnegiehall.org
+  '''Q0TMLOPF1J''',
+  '''d2d2b382f2659c44ef8927aad7a24172''',
+]

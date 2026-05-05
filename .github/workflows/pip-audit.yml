@@ -1,0 +1,21 @@
+name: pip-audit
+
+on:
+  schedule:
+    - cron: "0 14 * * 1"  # Mondays 14:00 UTC
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package + audit deps
+        run: |
+          pip install pip-audit
+          pip install -e .
+      - name: Run pip-audit
+        run: pip-audit --desc || true  # report-only; don't fail CI on transitive CVEs

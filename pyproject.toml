@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "touch-grass-mcp"
+version = "0.1.0"
+description = "Preference-aware events discovery MCP server. Knows what you like, surfaces what you'd actually want to do."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "AG Dynamics" }]
+keywords = ["mcp", "events", "discovery", "personalization", "nyc", "concerts", "museums", "restaurants"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet",
+]
+
+dependencies = [
+    "mcp>=1.0,<2",
+    "httpx>=0.27,<1",
+    "pydantic>=2.6,<3",
+    "python-dotenv>=1.0,<2",
+    "requests>=2.31,<3",
+    "feedparser>=6.0,<7",
+    "icalendar>=5.0,<7",
+    "beautifulsoup4>=4.12,<5",
+    "curl-cffi>=0.7,<1",
+]
+
+[project.optional-dependencies]
+pulse = [
+    "pytrends>=4.9,<5",
+    "praw>=7.7,<8",
+]
+nlp = [
+    "spacy>=3.7,<4",
+]
+dev = [
+    "pytest>=7.4,<9",
+    "ruff>=0.5,<1",
+    "pyright>=1.1,<2",
+    "pre-commit>=3.5,<5",
+    "pip-audit>=2.6,<3",
+]
+
+[project.scripts]
+touch-grass = "touch_grass.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/AG-Dynamics-GH/touch-grass-mcp"
+Issues = "https://github.com/AG-Dynamics-GH/touch-grass-mcp/issues"
+Documentation = "https://github.com/AG-Dynamics-GH/touch-grass-mcp#readme"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/touch_grass"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
+ignore = ["E501"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+asyncio_mode = "auto"
