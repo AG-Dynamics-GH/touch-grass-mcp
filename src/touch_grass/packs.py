@@ -68,6 +68,104 @@ PACKS: dict[str, CityPack] = {
             trends_geo="US-NY-501",
         ),
     ),
+    # Starter packs — pulse defaults only, no city-specific scrapers yet.
+    # Core keyless aggregators (Ticketmaster, Eventbrite, Yelp, Resident Advisor,
+    # Dice, OpenBrewery, NWS, editorial) work everywhere. PRs welcome to upgrade
+    # any of these to a deep-coverage pack with local museum/library/venue scrapers.
+    "sf": CityPack(
+        name="sf",
+        aliases=("san francisco", "sf", "san fran", "bay area"),
+        state="CA",
+        client_modules=[],
+        pulse_defaults=PulseDefaults(
+            reddit_subs=["sanfrancisco", "AskSF", "bayarea", "FoodSF"],
+            rss_feeds=[
+                "https://sf.eater.com/rss/index.xml",
+                "https://www.timeout.com/san-francisco/feed.rss",
+            ],
+            trends_geo="US-CA-807",
+        ),
+    ),
+    "la": CityPack(
+        name="la",
+        aliases=("los angeles", "la", "l.a.", "lax"),
+        state="CA",
+        client_modules=[],
+        pulse_defaults=PulseDefaults(
+            reddit_subs=["LosAngeles", "AskLosAngeles", "FoodLosAngeles"],
+            rss_feeds=[
+                "https://la.eater.com/rss/index.xml",
+                "https://www.timeout.com/los-angeles/feed.rss",
+            ],
+            trends_geo="US-CA-803",
+        ),
+    ),
+    "chicago": CityPack(
+        name="chicago",
+        aliases=("chicago", "chi", "chitown"),
+        state="IL",
+        client_modules=[],
+        pulse_defaults=PulseDefaults(
+            reddit_subs=["chicago", "AskChicago", "chicagofood"],
+            rss_feeds=[
+                "https://chicago.eater.com/rss/index.xml",
+                "https://www.timeout.com/chicago/feed.rss",
+            ],
+            trends_geo="US-IL-602",
+        ),
+    ),
+    "austin": CityPack(
+        name="austin",
+        aliases=("austin", "atx"),
+        state="TX",
+        client_modules=[],
+        pulse_defaults=PulseDefaults(
+            reddit_subs=["Austin", "AskAnAustinian", "austinfood"],
+            rss_feeds=[
+                "https://austin.eater.com/rss/index.xml",
+            ],
+            trends_geo="US-TX-635",
+        ),
+    ),
+    "boston": CityPack(
+        name="boston",
+        aliases=("boston", "bos", "cambridge"),
+        state="MA",
+        client_modules=[],
+        pulse_defaults=PulseDefaults(
+            reddit_subs=["boston", "AskBoston", "bostonfood"],
+            rss_feeds=[
+                "https://boston.eater.com/rss/index.xml",
+            ],
+            trends_geo="US-MA-506",
+        ),
+    ),
+    "seattle": CityPack(
+        name="seattle",
+        aliases=("seattle", "sea"),
+        state="WA",
+        client_modules=[],
+        pulse_defaults=PulseDefaults(
+            reddit_subs=["Seattle", "AskSeattle", "SeattleFood"],
+            rss_feeds=[
+                "https://seattle.eater.com/rss/index.xml",
+            ],
+            trends_geo="US-WA-819",
+        ),
+    ),
+    "dc": CityPack(
+        name="dc",
+        aliases=("washington dc", "dc", "washington", "d.c."),
+        state="DC",
+        client_modules=[],
+        pulse_defaults=PulseDefaults(
+            reddit_subs=["washingtondc", "AskDC", "dcfood"],
+            rss_feeds=[
+                "https://dc.eater.com/rss/index.xml",
+            ],
+            trends_geo="US-DC-511",
+        ),
+    ),
 }
 
 

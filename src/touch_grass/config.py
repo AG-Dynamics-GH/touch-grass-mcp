@@ -58,7 +58,7 @@ def load_profile_dict() -> dict[str, Any]:
     """Load the user profile as a dict. Returns empty config skeleton if missing."""
     path = resolve_config_path()
     if not path.exists():
-        return _empty_config()
+        return empty_config()
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as e:
@@ -79,7 +79,7 @@ def config_exists() -> bool:
     return resolve_config_path().exists()
 
 
-def _empty_config() -> dict[str, Any]:
+def empty_config() -> dict[str, Any]:
     """Skeleton config used when no file exists yet."""
     return {
         "location": {"city": "", "state": "", "zip": "", "radius_miles": 25},

@@ -15,6 +15,7 @@ from touch_grass.setup_wizard import (
     Provider,
     _read_env,
     _write_env_key,
+    collect_profile_interactive,
     run_setup,
 )
 
@@ -492,3 +493,193 @@ def test_validators_decode_status_codes(
     ok, msg = fn("k")
     assert ok is False
     assert msg  # non-empty message
+
+
+# ---------------------------------------------------------------------------
+# Profile collection + city packs
+# ---------------------------------------------------------------------------
+
+
+def test_collect_profile_with_city_hint_pack_match_skips_state_prompt():
+    """When --city matches a known pack, state is auto-filled and never prompted."""
+    inputs = _Inputs(
+        [
+            "",  # zip (skipped)
+            "indie, jazz",  # music
+            "running",  # activities
+            "ramen, wine bars",  # food
+            "",  # dislike music
+            "",  # dislike activities
+            "intimate, creative",  # vibes
+            "Mission, North Beach",  # fav neighborhoods
+            "",  # avoid neighborhoods
+        ]
+    )
+    out = _Output()
+
+    config = collect_profile_interactive(input_fn=inputs, output_fn=out, city_hint="san francisco")
+
+    assert config["location"]["city"] == "san francisco"
+    assert config["location"]["state"] == "CA"
+    assert config["user_profile"]["interests"]["music_genres"] == ["indie", "jazz"]
+    assert config["user_profile"]["interests"]["activities"] == ["running"]
+    assert config["user_profile"]["interests"]["food_and_drink"] == ["ramen", "wine bars"]
+    assert config["user_profile"]["vibe_preferences"] == ["intimate", "creative"]
+    assert config["user_profile"]["neighborhoods"]["favorites"] == ["Mission", "North Beach"]
+    # Pulse defaults from SF pack should be filled in
+    assert any("sf.eater.com" in feed for feed in config["pulse"]["rss_feeds"])
+    assert "sanfrancisco" in config["pulse"]["reddit_subs"]
+    assert config["pulse"]["trends_geo"] == "US-CA-807"
+    assert "SF pack matched" in out.text
+
+
+def test_collect_profile_with_unknown_city_hint_falls_back_to_manual_state():
+    """City not matching any pack: prompts for state manually, no pulse defaults."""
+    inputs = _Inputs(
+        [
+            "CO",  # state
+            "",  # zip
+            "",  # music
+            "",  # activities
+            "",  # food
+            "",  # dislike music
+            "",  # dislike activities
+            "",  # vibes
+            "",  # fav
+            "",  # avoid
+        ]
+    )
+    out = _Output()
+
+    config = collect_profile_interactive(input_fn=inputs, output_fn=out, city_hint="Denver")
+
+    assert config["location"]["city"] == "Denver"
+    assert config["location"]["state"] == "CO"
+    assert config["pulse"]["reddit_subs"] == []
+    assert config["pulse"]["rss_feeds"] == []
+    assert config["pulse"]["trends_geo"] is None
+    assert "No starter pack" in out.text
+
+
+def test_collect_profile_no_city_hint_lists_available_packs_and_prompts():
+    inputs = _Inputs(
+        [
+            "Austin",  # city
+            "",  # zip
+            "",  # music
+            "",  # activities
+            "",  # food
+            "",  # dislike music
+            "",  # dislike activities
+            "",  # vibes
+            "",  # fav
+            "",  # avoid
+        ]
+    )
+    out = _Output()
+
+    config = collect_profile_interactive(input_fn=inputs, output_fn=out)
+
+    assert config["location"]["city"] == "Austin"
+    assert config["location"]["state"] == "TX"  # auto-filled from austin pack
+    assert "Available city packs" in out.text
+    assert "AUSTIN pack detected" in out.text
+    assert config["pulse"]["trends_geo"] == "US-TX-635"
+
+
+@pytest.mark.parametrize(
+    "alias,expected_state",
+    [
+        ("san francisco", "CA"),
+        ("sf", "CA"),
+        ("bay area", "CA"),
+        ("los angeles", "CA"),
+        ("la", "CA"),
+        ("chicago", "IL"),
+        ("austin", "TX"),
+        ("atx", "TX"),
+        ("boston", "MA"),
+        ("seattle", "WA"),
+        ("dc", "DC"),
+        ("washington dc", "DC"),
+        ("nyc", "NY"),
+        ("brooklyn", "NY"),
+    ],
+)
+def test_pack_aliases_resolve_to_correct_state(alias: str, expected_state: str):
+    from touch_grass.packs import resolve_pack
+
+    pack = resolve_pack(alias)
+    assert pack is not None, f"alias '{alias}' did not resolve to a pack"
+    assert pack.state == expected_state
+
+
+def test_run_setup_collect_profile_writes_config(tmp_path: Path, monkeypatch):
+    """End-to-end: setup with collect_profile=True writes both config.json and skips API keys."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    monkeypatch.setenv("TOUCH_GRASS_CONFIG", str(config_dir / "config.json"))
+
+    env = config_dir / ".env"
+
+    inputs = _Inputs(
+        [
+            "",  # zip (city hint provides city + state)
+            "techno",  # music
+            "",  # activities
+            "",  # food
+            "",  # dislike music
+            "",  # dislike activities
+            "",  # vibes
+            "",  # fav
+            "",  # avoid
+            "n",  # decline configuring the (fake) provider in API key phase
+        ]
+    )
+    out = _Output()
+
+    provider = _make_provider()
+
+    rc = run_setup(
+        input_fn=inputs,
+        output_fn=out,
+        browser_fn=_no_browser,
+        env_path=env,
+        providers=(provider,),
+        collect_profile=True,
+        city_hint="seattle",
+    )
+
+    assert rc == 0
+    saved = (config_dir / "config.json").read_text()
+    assert '"city": "seattle"' in saved
+    assert '"state": "WA"' in saved
+    assert "Step 1/2" in out.text
+    assert "Step 2/2" in out.text
+
+
+def test_run_setup_skips_profile_when_config_exists(tmp_path: Path, monkeypatch):
+    """If config.json already exists, profile phase is skipped (use --force to override)."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"existing": true}', encoding="utf-8")
+    monkeypatch.setenv("TOUCH_GRASS_CONFIG", str(config_path))
+
+    env = tmp_path / ".env"
+    inputs = _Inputs(["n"])  # decline provider config
+    out = _Output()
+    provider = _make_provider()
+
+    run_setup(
+        input_fn=inputs,
+        output_fn=out,
+        browser_fn=_no_browser,
+        env_path=env,
+        providers=(provider,),
+        collect_profile=True,
+        city_hint=None,
+    )
+
+    # Config not overwritten
+    assert config_path.read_text() == '{"existing": true}'
+    assert "already exists" in out.text
+    assert "Skipping profile setup" in out.text

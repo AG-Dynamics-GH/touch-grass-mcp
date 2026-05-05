@@ -1,8 +1,14 @@
-"""Guided API key setup wizard.
+"""Unified onboarding wizard: profile + city pack + API keys.
 
-Each provider requires manual signup and ToS acceptance, so full automation
-isn't possible. This wizard opens the signup URL, prompts for the resulting
-key, validates it against the live API, and saves it to the user's .env.
+Two phases:
+
+1. Profile — interactively collect city, interests, dislikes, vibes,
+   neighborhoods. Auto-fills pulse defaults from the matching city pack.
+2. API keys — opens each provider's signup URL, validates the pasted key
+   against the live API, saves to ~/.config/touch-grass/.env.
+
+Each provider key requires manual signup; full automation isn't possible
+because Terms of Service must be accepted by a human.
 """
 
 from __future__ import annotations
@@ -16,7 +22,14 @@ from typing import Any
 
 import httpx
 
-from touch_grass.config import get_config_dir
+from touch_grass.config import (
+    config_exists,
+    empty_config,
+    get_config_dir,
+    resolve_config_path,
+    save_profile_dict,
+)
+from touch_grass.packs import PACKS, CityPack, resolve_pack
 
 ValidateResult = tuple[bool, str]
 Validator = Callable[[str], ValidateResult]
@@ -184,6 +197,92 @@ def _write_env_key(env_path: Path, key: str, value: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Profile collection
+# ---------------------------------------------------------------------------
+
+
+def _csv(s: str) -> list[str]:
+    return [t.strip() for t in s.split(",") if t.strip()]
+
+
+def collect_profile_interactive(
+    *,
+    input_fn: Callable[[str], str] = input,
+    output_fn: Callable[[str], None] = print,
+    city_hint: str | None = None,
+) -> dict[str, Any]:
+    """Interactively collect a full user profile.
+
+    If ``city_hint`` matches a known city pack, location and pulse defaults
+    are auto-filled and the user is not asked for state. Returns a config
+    dict ready for ``save_profile_dict``.
+    """
+    pack: CityPack | None = None
+    state = ""
+
+    if city_hint:
+        pack = resolve_pack(city_hint)
+        if pack:
+            output_fn(f"✓ {pack.name.upper()} pack matched for '{city_hint}'.")
+            city = city_hint
+            state = pack.state
+        else:
+            available = ", ".join(sorted(PACKS.keys()))
+            output_fn(f"No starter pack for '{city_hint}'. Available: {available}")
+            output_fn("Continuing with manual entry.")
+            city = city_hint
+    else:
+        output_fn(f"Available city packs: {', '.join(sorted(PACKS.keys()))}")
+        city = input_fn("Your city (e.g. New York, San Francisco, Austin): ").strip()
+        pack = resolve_pack(city)
+        if pack:
+            state = pack.state
+            output_fn(f"✓ {pack.name.upper()} pack detected — state {state} auto-filled.")
+
+    if not state:
+        state = input_fn("State (2-letter, e.g. CA): ").strip().upper()
+    zip_code = input_fn("ZIP code (optional): ").strip()
+
+    output_fn("\nWhat do you like? Comma-separated keywords; leave blank to skip.")
+    music = input_fn("  Music genres (jazz, indie rock, electronic): ").strip()
+    activities = input_fn("  Activities (running, yoga, art galleries): ").strip()
+    food = input_fn("  Food / drink (rooftop bars, wine, ramen): ").strip()
+
+    output_fn("\nDislikes — surfaces less of these (optional, comma-separated).")
+    dislike_music = input_fn("  Music genres to skip: ").strip()
+    dislike_activities = input_fn("  Activities to skip: ").strip()
+
+    output_fn("\nVibe preferences (optional, e.g. intimate, chill, creative, upscale).")
+    vibes = input_fn("  Vibes: ").strip()
+
+    fav_neighborhoods = input_fn("\nFavorite neighborhoods (optional, comma-separated): ").strip()
+    avoid_neighborhoods = input_fn("Neighborhoods to avoid (optional, comma-separated): ").strip()
+
+    config = empty_config()
+    config["location"]["city"] = city
+    config["location"]["state"] = state
+    config["location"]["zip"] = zip_code
+
+    profile = config["user_profile"]
+    profile["interests"]["music_genres"] = _csv(music)
+    profile["interests"]["activities"] = _csv(activities)
+    profile["interests"]["food_and_drink"] = _csv(food)
+    profile["dislikes"]["music_genres"] = _csv(dislike_music)
+    profile["dislikes"]["activities"] = _csv(dislike_activities)
+    profile["vibe_preferences"] = _csv(vibes)
+    profile["neighborhoods"]["favorites"] = _csv(fav_neighborhoods)
+    profile["neighborhoods"]["avoid"] = _csv(avoid_neighborhoods)
+
+    if pack:
+        config["pulse"]["reddit_subs"] = list(pack.pulse_defaults.reddit_subs)
+        config["pulse"]["rss_feeds"] = list(pack.pulse_defaults.rss_feeds)
+        config["pulse"]["trends_geo"] = pack.pulse_defaults.trends_geo
+        output_fn(f"\n✓ Pulse defaults auto-filled from {pack.name.upper()} pack.")
+
+    return config
+
+
+# ---------------------------------------------------------------------------
 # Wizard
 # ---------------------------------------------------------------------------
 
@@ -204,11 +303,20 @@ def run_setup(
     env_path: Path | None = None,
     providers: tuple[Provider, ...] = PROVIDERS,
     allow_unvalidated: bool = False,
+    collect_profile: bool = False,
+    city_hint: str | None = None,
+    force_profile: bool = False,
 ) -> int:
-    """Run the interactive setup wizard.
+    """Run the unified onboarding wizard.
 
-    Returns 0 on completion (even if user skipped everything), 1 on Ctrl-C.
-    All side-effecting callables are injected for testability.
+    Phase 1 (when ``collect_profile=True``): collect profile interactively
+    and save to ``config.json``. Skipped if a config already exists unless
+    ``force_profile=True``.
+
+    Phase 2 (always): run the API key wizard.
+
+    Returns 0 on completion, 1 on Ctrl-C. All side-effecting callables are
+    injected for testability.
 
     If ``allow_unvalidated=True``, keys that fail validation can be saved
     anyway after a confirmation prompt — useful when validation endpoints
@@ -217,9 +325,28 @@ def run_setup(
     if env_path is None:
         env_path = get_config_dir() / ".env"
 
+    if collect_profile:
+        if config_exists() and not force_profile:
+            output_fn(f"Profile already exists at {resolve_config_path()}.")
+            output_fn("Skipping profile setup. Use --force to redo, or edit the JSON directly.\n")
+        else:
+            output_fn("=== Step 1/2: Profile ===\n")
+            try:
+                profile = collect_profile_interactive(
+                    input_fn=input_fn, output_fn=output_fn, city_hint=city_hint
+                )
+            except KeyboardInterrupt:
+                output_fn("\n\nInterrupted during profile setup. Nothing saved.")
+                return 1
+            save_profile_dict(profile)
+            output_fn(f"\n✓ Profile saved to {resolve_config_path()}\n")
+
     existing = _read_env(env_path)
 
-    output_fn("touch-grass setup — guided API key configuration")
+    if collect_profile:
+        output_fn("=== Step 2/2: API keys ===\n")
+    else:
+        output_fn("touch-grass setup — guided API key configuration\n")
     output_fn(f"Writing keys to: {env_path}\n")
     output_fn("Each provider requires manual signup; full automation isn't possible")
     output_fn("(Terms of Service must be accepted by a human). This wizard opens")

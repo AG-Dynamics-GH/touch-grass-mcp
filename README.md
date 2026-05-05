@@ -40,18 +40,25 @@ pip install "touch-grass-mcp[pulse,nlp]"
 ## First-run setup
 
 ```bash
-# 1. Bootstrap your profile
-touch-grass init
-
-# 2. (optional) Add API keys for richer results — guided wizard
+# One unified onboarding wizard: profile + city pack + API keys
 touch-grass setup
-# Walks you through Ticketmaster, Eventbrite, Yelp, NYC Open Data:
-# opens each signup page, validates the key you paste, writes it to .env.
-# Skip any provider you don't want.
 
-# 3. Sanity check
+# Fast launch for a known city (auto-fills state + pulse defaults):
+touch-grass setup --city "san francisco"
+
+# See available city starter packs:
+touch-grass list-cities
+
+# Already configured profile? Just (re)do API keys:
+touch-grass setup --keys-only
+
+# Sanity check:
 touch-grass doctor
 ```
+
+City starter packs auto-fill subreddits, RSS feeds, and Google Trends geo
+when your profile city matches. Currently bundled: NYC (deep coverage), SF,
+LA, Chicago, Austin, Boston, Seattle, DC. PRs welcome to add more.
 
 ## Wire it into Claude Desktop / Claude Code
 

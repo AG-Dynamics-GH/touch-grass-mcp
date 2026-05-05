@@ -13,11 +13,13 @@ from touch_grass.config import (
     resolve_config_path,
     save_profile_dict,
 )
-from touch_grass.packs import resolve_pack
+from touch_grass.packs import PACKS
 
 
 def cmd_init(args) -> int:
-    """Interactive bootstrap: ask city, interests, neighborhoods → write config.json."""
+    """Interactive profile bootstrap. Use --city to fast-launch a known city pack."""
+    from touch_grass.setup_wizard import collect_profile_interactive
+
     if config_exists() and not args.force:
         path = resolve_config_path()
         print(f"Config already exists at {path}")
@@ -25,81 +27,37 @@ def cmd_init(args) -> int:
         return 1
 
     print("touch-grass init — let's set up your profile.\n")
-
-    city = input("Your city (e.g. New York, Chicago, Austin): ").strip()
-    state = input("State (2-letter, e.g. NY): ").strip().upper()
-    zip_code = input("ZIP code (optional): ").strip()
-
-    print("\nWhat do you like? Comma-separated keywords (e.g. jazz, indie rock).")
-    music = input("  Music genres: ").strip()
-    activities = input("  Activities (running, yoga, art galleries...): ").strip()
-    food = input("  Food / drink (rooftop bars, wine, ramen...): ").strip()
-
-    favorite_neighborhoods = input("\nFavorite neighborhoods (optional, comma-separated): ").strip()
-
-    print()
-    config = {
-        "location": {
-            "city": city,
-            "state": state,
-            "zip": zip_code,
-            "radius_miles": 25,
-        },
-        "user_profile": {
-            "name": "",
-            "interests": {
-                "music_genres": [s.strip() for s in music.split(",") if s.strip()],
-                "activities": [s.strip() for s in activities.split(",") if s.strip()],
-                "food_and_drink": [s.strip() for s in food.split(",") if s.strip()],
-                "topics": [],
-            },
-            "dislikes": {"music_genres": [], "activities": [], "food_and_drink": []},
-            "vibe_preferences": [],
-            "neighborhoods": {
-                "favorites": [s.strip() for s in favorite_neighborhoods.split(",") if s.strip()],
-                "avoid": [],
-            },
-            "schedule": {
-                "preferred_days": ["friday", "saturday", "sunday"],
-                "preferred_times": ["evening"],
-                "budget": "no_limit",
-                "avoid_early_morning": True,
-            },
-            "social_context": {
-                "typical_group_size": 2,
-                "open_to_solo": True,
-                "open_to_group_events": True,
-            },
-            "bucket_list": [],
-            "preferred_groups": [],
-            "avoid_groups": [],
-        },
-        "pulse": {
-            "enabled": True,
-            "reddit_subs": [],
-            "rss_feeds": [],
-            "trends_geo": None,
-        },
-        "community_calendars": [],
-    }
-
-    # Auto-fill pulse defaults if a city pack matches
-    pack = resolve_pack(city)
-    if pack:
-        config["pulse"]["reddit_subs"] = list(pack.pulse_defaults.reddit_subs)
-        config["pulse"]["rss_feeds"] = list(pack.pulse_defaults.rss_feeds)
-        config["pulse"]["trends_geo"] = pack.pulse_defaults.trends_geo
-        print(f"✓ {pack.name.upper()} pack detected — pulse defaults auto-filled.")
-
+    try:
+        config = collect_profile_interactive(city_hint=args.city)
+    except KeyboardInterrupt:
+        print("\n\nInterrupted. Nothing saved.")
+        return 1
     save_profile_dict(config)
     path = resolve_config_path()
-    print(f"✓ Config written to {path}")
+    print(f"\n✓ Config written to {path}")
     print()
     print("Next steps:")
-    print("  1. Add API keys to ~/.config/touch-grass/.env (see .env.example in the repo)")
-    print("  2. Add the MCP server to Claude Desktop / Claude Code config:")
+    print("  1. Configure API keys: touch-grass setup --keys-only")
+    print("  2. Wire the MCP server into Claude Desktop / Claude Code:")
     print("     command: touch-grass")
     print("     args: ['serve']")
+    return 0
+
+
+def cmd_list_cities(args) -> int:
+    """Print available city starter packs and their aliases."""
+    print("Available city packs (auto-fill pulse defaults on init/setup):\n")
+    for pack in sorted(PACKS.values(), key=lambda p: p.name):
+        aliases = ", ".join(pack.aliases)
+        scrapers = (
+            f" — deep coverage ({len(pack.client_modules)} local scrapers)"
+            if pack.client_modules
+            else " — starter pack (pulse defaults only)"
+        )
+        print(f"  {pack.name.upper()} ({pack.state}){scrapers}")
+        print(f"    aliases: {aliases}")
+    print("\nUse `touch-grass init --city <alias>` or `touch-grass setup --city <alias>`")
+    print("to fast-launch with that pack's defaults applied.")
     return 0
 
 
@@ -135,10 +93,15 @@ def cmd_clean(args) -> int:
 
 
 def cmd_setup(args) -> int:
-    """Guided API key setup: opens signup URLs, validates keys, writes to .env."""
+    """Unified onboarding: profile + city pack + API keys."""
     from touch_grass.setup_wizard import run_setup
 
-    return run_setup(allow_unvalidated=args.allow_unvalidated)
+    return run_setup(
+        allow_unvalidated=args.allow_unvalidated,
+        collect_profile=not args.keys_only,
+        city_hint=args.city,
+        force_profile=args.force,
+    )
 
 
 def cmd_doctor(args) -> int:
@@ -155,7 +118,6 @@ def cmd_doctor(args) -> int:
         "TICKETMASTER_API_KEY",
         "EVENTBRITE_API_KEY",
         "YELP_API_KEY",
-        "MEETUP_API_KEY",
         "NYC_OPENDATA_TOKEN",
     ]
     print("\nAPI keys:")
@@ -172,9 +134,17 @@ def main() -> int:
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_init = sub.add_parser("init", help="bootstrap a new config")
+    p_init = sub.add_parser("init", help="bootstrap a new profile (no API keys)")
     p_init.add_argument("--force", action="store_true", help="overwrite existing config")
+    p_init.add_argument(
+        "--city",
+        metavar="NAME",
+        help="city alias for fast launch (e.g. 'san francisco', 'sf', 'austin')",
+    )
     p_init.set_defaults(func=cmd_init)
+
+    p_list_cities = sub.add_parser("list-cities", help="show available city starter packs")
+    p_list_cities.set_defaults(func=cmd_list_cities)
 
     p_serve = sub.add_parser("serve", help="run the MCP server")
     p_serve.add_argument("--http", action="store_true", help="HTTP transport (not in v0.1)")
@@ -184,7 +154,25 @@ def main() -> int:
     p_clean.add_argument("--days", type=int, default=30, help="age threshold in days")
     p_clean.set_defaults(func=cmd_clean)
 
-    p_setup = sub.add_parser("setup", help="guided API key configuration wizard")
+    p_setup = sub.add_parser(
+        "setup",
+        help="unified onboarding wizard (profile + city pack + API keys)",
+    )
+    p_setup.add_argument(
+        "--city",
+        metavar="NAME",
+        help="city alias for fast launch (e.g. 'san francisco', 'sf', 'austin')",
+    )
+    p_setup.add_argument(
+        "--keys-only",
+        action="store_true",
+        help="skip profile collection; only configure API keys",
+    )
+    p_setup.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite existing profile during setup",
+    )
     p_setup.add_argument(
         "--allow-unvalidated",
         action="store_true",
