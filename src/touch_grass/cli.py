@@ -138,7 +138,7 @@ def cmd_setup(args) -> int:
     """Guided API key setup: opens signup URLs, validates keys, writes to .env."""
     from touch_grass.setup_wizard import run_setup
 
-    return run_setup()
+    return run_setup(allow_unvalidated=args.allow_unvalidated)
 
 
 def cmd_doctor(args) -> int:
@@ -185,6 +185,11 @@ def main() -> int:
     p_clean.set_defaults(func=cmd_clean)
 
     p_setup = sub.add_parser("setup", help="guided API key configuration wizard")
+    p_setup.add_argument(
+        "--allow-unvalidated",
+        action="store_true",
+        help="offer to save keys even if live validation fails (e.g. behind a proxy)",
+    )
     p_setup.set_defaults(func=cmd_setup)
 
     p_doctor = sub.add_parser("doctor", help="sanity check config + env")

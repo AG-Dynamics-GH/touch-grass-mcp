@@ -119,7 +119,7 @@ PROVIDERS: tuple[Provider, ...] = (
     Provider(
         env_var="EVENTBRITE_API_KEY",
         name="Eventbrite",
-        signup_url="https://www.eventbrite.com/platform/api-keys/",
+        signup_url="https://www.eventbrite.com/platform/api",
         instructions=(
             "1. Sign in (or create an account)\n"
             "2. Click 'Create API Key' or open an existing one\n"
@@ -130,10 +130,10 @@ PROVIDERS: tuple[Provider, ...] = (
     Provider(
         env_var="YELP_API_KEY",
         name="Yelp Fusion",
-        signup_url="https://www.yelp.com/developers/v3/manage_app",
+        signup_url="https://docs.developer.yelp.com/",
         instructions=(
             "1. Sign in (or create an account)\n"
-            "2. Click 'Create New App' and fill in any name + description\n"
+            "2. Go to 'Manage App' and create a new app\n"
             "3. Copy the API Key from the app page"
         ),
         validate=_validate_yelp,
@@ -203,11 +203,16 @@ def run_setup(
     browser_fn: Callable[[str], Any] = webbrowser.open,
     env_path: Path | None = None,
     providers: tuple[Provider, ...] = PROVIDERS,
+    allow_unvalidated: bool = False,
 ) -> int:
     """Run the interactive setup wizard.
 
-    Returns 0 on completion (even if user skipped everything), 1 on hard error.
+    Returns 0 on completion (even if user skipped everything), 1 on Ctrl-C.
     All side-effecting callables are injected for testability.
+
+    If ``allow_unvalidated=True``, keys that fail validation can be saved
+    anyway after a confirmation prompt — useful when validation endpoints
+    are unreachable from the user's network (corporate proxy, DNS, etc.).
     """
     if env_path is None:
         env_path = get_config_dir() / ".env"
@@ -222,6 +227,36 @@ def run_setup(
 
     summary: list[tuple[str, str, str]] = []
 
+    try:
+        return _run_setup_loop(
+            providers=providers,
+            existing=existing,
+            env_path=env_path,
+            input_fn=input_fn,
+            output_fn=output_fn,
+            browser_fn=browser_fn,
+            allow_unvalidated=allow_unvalidated,
+            summary=summary,
+        )
+    except KeyboardInterrupt:
+        output_fn(
+            "\n\nInterrupted. Keys saved so far are kept; re-run `touch-grass setup` to resume."
+        )
+        _print_summary(output_fn, env_path, summary)
+        return 1
+
+
+def _run_setup_loop(
+    *,
+    providers: tuple[Provider, ...],
+    existing: dict[str, str],
+    env_path: Path,
+    input_fn: Callable[[str], str],
+    output_fn: Callable[[str], None],
+    browser_fn: Callable[[str], Any],
+    allow_unvalidated: bool,
+    summary: list[tuple[str, str, str]],
+) -> int:
     for provider in providers:
         output_fn(f"\n--- {provider.name} ---")
         existing_key = existing.get(provider.env_var, "").strip()
@@ -269,6 +304,15 @@ def run_setup(
         ok, msg = provider.validate(key)
         if not ok:
             output_fn(f"  ✗ Validation failed: {msg}")
+            if allow_unvalidated and _ask(
+                "  Save anyway (validation may have failed due to network)?",
+                default_yes=False,
+                input_fn=input_fn,
+            ):
+                _write_env_key(env_path, provider.env_var, key)
+                output_fn(f"  ⚠ Saved unvalidated key to {env_path}")
+                summary.append((provider.name, "ok", "saved unvalidated"))
+                continue
             output_fn("  Not saving. Re-run `touch-grass setup` to retry.")
             summary.append((provider.name, "failed", msg))
             continue
@@ -277,6 +321,15 @@ def run_setup(
         output_fn(f"  ✓ Validated and saved to {env_path}")
         summary.append((provider.name, "ok", "saved"))
 
+    _print_summary(output_fn, env_path, summary)
+    return 0
+
+
+def _print_summary(
+    output_fn: Callable[[str], None],
+    env_path: Path,
+    summary: list[tuple[str, str, str]],
+) -> None:
     output_fn("\n=== Setup summary ===")
     icons = {"ok": "✓", "skipped": "—", "failed": "✗"}
     for name, status, detail in summary:
@@ -284,4 +337,3 @@ def run_setup(
 
     output_fn(f"\nKeys file: {env_path}")
     output_fn("Run `touch-grass doctor` to confirm everything's wired up.")
-    return 0

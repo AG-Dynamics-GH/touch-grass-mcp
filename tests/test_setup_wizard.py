@@ -121,6 +121,93 @@ def test_run_setup_happy_path_saves_validated_key(tmp_path: Path):
     assert "saved" in out.text
 
 
+def test_run_setup_allow_unvalidated_saves_after_confirmation(tmp_path: Path):
+    env = tmp_path / ".env"
+    provider = _make_provider(validate_result=(False, "Network error: timeout"))
+
+    inputs = _Inputs(
+        [
+            "y",  # configure?
+            "n",  # browser?
+            "PASTED_KEY",  # paste
+            "y",  # save anyway?
+        ]
+    )
+    out = _Output()
+
+    rc = run_setup(
+        input_fn=inputs,
+        output_fn=out,
+        browser_fn=_no_browser,
+        env_path=env,
+        providers=(provider,),
+        allow_unvalidated=True,
+    )
+
+    assert rc == 0
+    assert _read_env(env) == {"FAKE_KEY": "PASTED_KEY"}
+    assert "saved unvalidated" in out.text
+
+
+def test_run_setup_allow_unvalidated_can_decline(tmp_path: Path):
+    env = tmp_path / ".env"
+    provider = _make_provider(validate_result=(False, "denied"))
+
+    inputs = _Inputs(["y", "n", "PASTED_KEY", "n"])  # decline save-anyway
+    out = _Output()
+
+    run_setup(
+        input_fn=inputs,
+        output_fn=out,
+        browser_fn=_no_browser,
+        env_path=env,
+        providers=(provider,),
+        allow_unvalidated=True,
+    )
+
+    assert _read_env(env) == {}
+
+
+def test_run_setup_keyboard_interrupt_returns_1_and_keeps_prior_saves(tmp_path: Path):
+    env = tmp_path / ".env"
+    p_first = _make_provider(env_var="A", name="ProvA", validate_result=(True, "OK"))
+
+    def boom(key: str) -> tuple[bool, str]:
+        raise KeyboardInterrupt
+
+    p_second = Provider(
+        env_var="B",
+        name="ProvB",
+        signup_url="https://x",
+        instructions="step",
+        validate=boom,
+    )
+
+    inputs = _Inputs(
+        [
+            "y",  # configure A
+            "n",  # browser A
+            "KEY_A",  # paste A
+            "y",  # configure B
+            "n",  # browser B
+            "KEY_B",  # paste B (validate raises KeyboardInterrupt)
+        ]
+    )
+    out = _Output()
+
+    rc = run_setup(
+        input_fn=inputs,
+        output_fn=out,
+        browser_fn=_no_browser,
+        env_path=env,
+        providers=(p_first, p_second),
+    )
+
+    assert rc == 1
+    assert _read_env(env) == {"A": "KEY_A"}  # A saved before B interrupt
+    assert "Interrupted" in out.text
+
+
 def test_run_setup_validation_failure_does_not_save(tmp_path: Path):
     env = tmp_path / ".env"
     provider = _make_provider(validate_result=(False, "Invalid API key"))
